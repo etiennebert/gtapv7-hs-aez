@@ -1,4 +1,9 @@
-ariable (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
+!<
+    3-3. Value-Added Nest
+    ---------------------
+>!
+
+Variable (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
     tf(i,j,r) # tax on primary factor i used by j in region r #;
 
 Equation MPFACTPRICE
@@ -57,3 +62,60 @@ Equation TFURATIO
             VFA(i,j,r) * tf(i,j,r) + ETAX(i,j,r) * [pmi(i,r) + qfe(i,j,r)]))
         + sum(i,ENDWS_COMM, sum(j,PROD_COMM,
             VFA(i,j,r) * tf(i,j,r) + ETAX(i,j,r) * [pmes(i,j,r) + qfe(i,j,r)]));
+
+
+!<
+    3-3.1 GTAP-AEZ Value-Added Nest
+    -------------------------------
+>!
+
+!Begin Calibration of Yield Response to Price!
+
+ZERODIVIDE (ZERO_BY_ZERO) DEFAULT 0 ;
+ZERODIVIDE DEFAULT 1 ;
+
+Coefficient (all,j,PROD_COMM)(all,r,REG)
+    TOTCOST(j,r);
+Formula (all,j,PROD_COMM)(all,r,REG)
+    TOTCOST(j,r) = 
+            sum(i, DEMD_COMM, (VFA(i,j,r)));
+            
+Coefficient (all,j,PROD_COMM)(all,r,REG)
+    LCOST(j,r);
+Formula (all,j,PROD_COMM)(all,r,REG)
+    LCOST(j,r) = 
+            sum(a, AEZ_COMM, (VFA(a,j,r)));
+
+Coefficient (all,j,PROD_COMM)(all,r,REG)
+    THETA_COST(j,r) # Endowment's cost share in value-added #;
+Formula (all,j,PROD_COMM)(all,r,REG)
+    THETA_COST(j,r) = LCOST(j,r) / TOTCOST(j,r);
+
+Coefficient (parameter)(all,j,PROD_COMM)(all,r,REG)
+    YD_TOGGLE(j,r) # Turn off the yield calibrated ESUBVA's by setting to zero #;
+Read YD_TOGGLE from file GTAPPARM header "YD01";
+
+Coefficient (parameter)(all,r,REG)
+    YD_REG_SCALE(r) # Scale up or down the target yield elasticity for a region #;
+Read YD_REG_SCALE from file GTAPPARM header "YDRS";
+
+Coefficient (parameter)
+    YD_ELAS_TARGET # Scalar yield elasticity target, read from PARM for SSA #;
+Read YD_ELAS_TARGET from file GTAPPARM header "YDEL";
+
+Coefficient (parameter) (all,j,PROD_COMM)(all,r,REG)
+    ESUB_VA1(j,r)
+    # Elasticity of substitution in value-added-energy subproduction #;
+Read
+    ESUB_VA1 from file GTAPPARM header "ESBV";
+
+Coefficient (parameter) (all,j,PROD_COMM)(all,r,REG)
+    ESUB_VA(j,r)
+    # Elasticity of substitution in value-added-energy subproduction #;
+Formula(initial) (all,j,PROD_COMM)(all,r,REG)
+    ESUB_VA(j,r) = if(THETA_COST(j,r) * YD_TOGGLE(j,r) <= 0, ESUB_VA1(j,r))
+                + if(THETA_COST(j,r) * YD_TOGGLE(j,r) > 0,
+                     YD_REG_SCALE(r) * YD_ELAS_TARGET /
+                                        [(1 / THETA_COST(j,r)) - 1]);
+
+! End calibration of Yield Response to Price !
