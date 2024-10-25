@@ -1,0 +1,59 @@
+ariable (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
+    tf(i,j,r) # tax on primary factor i used by j in region r #;
+
+Equation MPFACTPRICE
+# equation links domestic and firm demand prices (HT 16) #
+(all,i,ENDWM_COMM)(all,j,PROD_COMM)(all,r,REG)
+    pfdi(i,j,r) = tf(i,j,r) + pmi(i,r);
+
+Equation SPFACTPRICE
+# equation links domestic and firm demand prices (HT 17) #
+(all,i,ENDWS_COMM)(all,j,PROD_COMM)(all,r,REG)
+    pfsi(i,j,r) = tf(i,j,r) + pmes(i,j,r);
+
+Variable (all,i,ENDW_COMM)
+    afcom(i) # factor input tech change of input i, worldwide #;
+Variable (all,j,PROD_COMM)
+    afsec(j) # factor input tech change of sector j, worldwide #;
+Variable (all,r,REG)
+    afreg(r) # factor input tech change in region r #;
+Variable (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
+    afall(i,j,r) # primary factor i augmenting tech change sector j in r #;
+
+Equation AFEWORLD
+# sector/region specific average rate of prim. factor i augmenting tech change #
+(all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
+    af(i,j,r) = afcom(i) + afsec(j) + afreg(r) + afall(i,j,r);
+
+Coefficient (all,j,PROD_COMM)(all,r,REG)
+    VVA(j,r) # value added in activity j in region r #;
+Formula (all,j,PROD_COMM)(all,r,REG)
+    VVA(j,r) = sum(i,ENDW_COMM, VFA(i,j,r));
+
+Coefficient (all,i,ENDW_COMM)
+    SVADFLT(i) # zerodivide default for SVA #;
+Formula (all,i,ENDW_COMM)
+    SVADFLT(i)
+        = sum(j,PROD_COMM, sum(r,REG, VFA(i,j,r)))
+        / sum(j,PROD_COMM, sum(r,REG, VVA(j,r)));
+
+Coefficient (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
+    SVA(i,j,r) # share of i in total value added in j in r #;
+Formula (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG: VVA(j,r) <> 0)
+    SVA(i,j,r) = VFA(i,j,r) / VVA(j,r);
+Formula (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG: VVA(j,r) = 0)
+    SVA(i,j,r) = SVADFLT(i);
+
+Equation VAPRICE
+# effective price of primary factor composite in each sector/region (HT 33) #
+(all,j,PROD_COMM)(all,r,REG)
+    pva(j,r) = sum(k,ENDW_COMM, SVA(k,j,r) * [pfdi(k,j,r) - af(k,j,r)]);
+
+Equation TFURATIO
+# change in ratio of tax payments on factor usage to regional income #
+(all,r,REG)
+    100.0 * INCOME(r) * del_taxrfu(r) + TFU(r) * y(r)
+        = sum(i,ENDWM_COMM, sum(j,PROD_COMM,
+            VFA(i,j,r) * tf(i,j,r) + ETAX(i,j,r) * [pmi(i,r) + qfe(i,j,r)]))
+        + sum(i,ENDWS_COMM, sum(j,PROD_COMM,
+            VFA(i,j,r) * tf(i,j,r) + ETAX(i,j,r) * [pmes(i,j,r) + qfe(i,j,r)]));
