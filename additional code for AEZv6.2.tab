@@ -1,0 +1,265 @@
+!< GTAP-AEZ SETS!
+
+Set
+    FOREST_COMM # forestry commodities #
+    maximum size 10 read elements from file GTAPSETS header "FOR";
+Set
+    CROP_COMM # crop commodities #
+    maximum size 10 read elements from file GTAPSETS header "CROP";
+Subset 
+    CROP_COMM is subset of PROD_COMM;
+
+Set 
+    NCROP_COMM # non-crop commodities produced using land # =
+    PROD_COMM - CROP_COMM;
+Set
+    GRAZE_COMM # livestock grazing commodities #
+    maximum size 10 read elements from file GTAPSETS header "GRAZ";
+Set
+    NRUMN_COMM # non-ruminant livestock commodities #
+    maximum size 10 read elements from file GTAPSETS header "NRUM";
+Set
+    LSTK_COMM # livestock commodities # = 
+    GRAZE_COMM UNION NRUMN_COMM;
+Set
+    AGR_COMM # traded agr commodities # = 
+    CROP_COMM UNION LSTK_COMM;
+Set
+    AGRLAND_COMM # land-using agr commodities # = CROP_COMM UNION GRAZE_COMM; 
+Set
+    LAND_COMM # commodities produced using land # = 
+    FOREST_COMM UNION AGRLAND_COMM;
+Subset
+    LAND_COMM is subset of TRAD_COMM;
+
+Set
+    NLNDP_COMM # non-land produced commodities # = PROD_COMM - LAND_COMM;
+
+Set
+    AEZ_COMM # set of land endowments, disaggregated by AEZ #
+    maximum size 18 read elements from file GTAPSETS header "AEZS";
+Subset 
+    AEZ_COMM is subset of ENDW_COMM;
+Subset 
+    AEZ_COMM is subset of ENDWS_COMM;
+Set
+    NAEZ_COMM # set of non-aez endowments # = ENDW_COMM - AEZ_COMM;
+Set
+    SNAEZ_COMM # non-land, sluggish commodities # = ENDWS_COMM - AEZ_COMM;
+Subset
+    SNAEZ_COMM is subset of NAEZ_COMM;
+
+!<END OF GTAP-AEZ SETS>!
+
+-----
+!<
+    3-3.1 GTAP-AEZ Value-Added Nest
+    -------------------------------
+>!
+
+!Begin Calibration of Yield Response to Price!
+
+
+ZERODIVIDE (ZERO_BY_ZERO) DEFAULT 0 ;
+ZERODIVIDE DEFAULT 1 ;
+
+Coefficient (all,j,PROD_COMM)(all,r,reg)
+    TOTALC(j,r);
+Formula (all,j,PROD_COMM)(all,r,reg)
+    TOTALC(j,r) = 
+            sum(i, demd_comm,(VFA(i,j,r)));
+Coefficient (all,j,PROD_COMM)(all,r,reg)
+    LANDCOST(j,r);
+Formula (all,j,PROD_COMM)(all,r,reg)
+    LANDCOST(j,r) = 
+            sum(a, AEZ_COMM,(VFA(a,j,r)));
+
+Coefficient(all,j,PROD_COMM)(all,r,reg)
+    THETAi(j,r) #Endowment's cost share in value-added#;
+Formula(all,j,PROD_COMM)(all,r,reg)
+    THETAi(j,r) = LANDCOST(j,r)/TOTALC(j,r);
+
+Coefficient (parameter)(all,j,PROD_COMM)(all,r,REG)
+    YDONOFF(j,r) #Turn off the yield calibrated ESUBVA's by setting to zero#;
+Read YDONOFF from file GTAPPARM header "YD01";
+
+Coefficient (parameter)(all,r,REG)
+    YDREGSCALE(r) #Scale up or down the target yield elast for a region#;
+Read YDREGSCALE from file GTAPPARM header "YDRS";
+
+Coefficient (parameter)
+    YDE_Target #Scalar yield elasticity target, read from PARM for SSA#;
+Read YDE_Target from file GTAPPARM header "YDEL";
+
+Coefficient (parameter) (all,j,PROD_COMM)(all,r,REG)
+    ESUBVA1(j,r)
+    # elasticity of substitution in value-added-energy subproduction #;
+Read
+    ESUBVA1 from file GTAPPARM header "ESBV";
+
+Coefficient (parameter) (all,j,PROD_COMM)(all,r,REG)
+    ESUBVA(j,r)
+    # elasticity of substitution in value-added-energy subproduction #;
+Formula(initial) (all,j,PROD_COMM)(all,r,REG)
+    ESUBVA(j,r) = if(THETAi(j,r)*YDONOFF(j,r) le 0, ESUBVA1(j,r))
+                + if(THETAi(j,r)*YDONOFF(j,r) gt 0,
+                     YDREGSCALE(r)*YDE_Target/
+                                        [(1/THETAi(j,r))-1]);
+
+!End calibration of Yield Response to Price!
+
+
+!< GTAP-AEZ: modify derived demand for land in land-using sectors!
+
+Equation ENDWDEMAND
+# demands for endowment commodities in non-land sectors (HT 34) #
+(all,i,ENDW_COMM)(all,j,NLNDP_COMM)(all,r,REG)
+    qfe(i,j,r)
+        = - afe(i,j,r) + qva(j,r)
+        - ESUBVA1(j,r) * [pfe(i,j,r) - afe(i,j,r) - pva(j,r)];
+
+Coefficient (all,i,AEZ_COMM)(all,j,LAND_COMM)(all,r,REG)
+    SAEZLAND(i,j,r) # the share of AEZ i in total land in sector j of r #;
+Formula (all,i,AEZ_COMM)(all,j,LAND_COMM)(all,r,REG)
+    SAEZLAND(i,j,r)
+        = VFA(i,j,r)/ sum(k,AEZ_COMM, VFA(k,j,r));
+
+Variable (all,j,LAND_COMM)(all,r,REG)
+    pfeland(j,r) # composite land price in sector j, region r #;
+Variable (all,j,LAND_COMM)(all,r,REG)
+    qfeland(j,r)  # composite land demand in sector j, region r #;
+
+Coefficient (parameter)(all,j,PROD_COMM)(all,r,REG)
+    ESUBAEZ(j,r)
+    # elst. of sub. amongst AEZs in land composite of land using sector j #;
+Read
+    ESUBAEZ from file GTAPPARM header "EAEZ";
+
+Equation LANDPRICE
+# effective price of land composite in each sector/region (HT 33) #
+(all,j,LAND_COMM)(all,r,REG)
+    pfeland(j,r) = 
+        sum(k,AEZ_COMM, SAEZLAND(k,j,r) * [pfe(k,j,r) - afe(k,j,r)]);
+
+Equation LANDDEMAND
+# demands for land in the value added nest #
+(all,j, LAND_COMM)(all,r,REG)
+    qfeland(j,r)
+        = qva(j,r)
+        - ESUBVA(j,r) * [pfeland(j,r) - pva(j,r)];
+
+Equation AEZDEMAND
+# demands for endowment commodities (HT 34) #
+(all,i,AEZ_COMM)(all,j, LAND_COMM)(all,r,REG)
+    qfe(i,j,r)
+        = - afe(i,j,r) + qfeland(j,r)
+        - ESUBAEZ(j,r) * [pfe(i,j,r) - afe(i,j,r) - pfeland(j,r)];
+
+Equation NLANDDEMAND
+# demands for endowment commodities in land using sectors (HT 34) #
+(all,i,NAEZ_COMM)(all,j,LAND_COMM)(all,r,REG)
+    qfe(i,j,r)
+        = - afe(i,j,r) + qva(j,r)
+        - ESUBVA(j,r) * [pfe(i,j,r) - afe(i,j,r) - pva(j,r)];
+
+!<
+    End of GTAP-AEZ Value-Added Nest
+    --------------------------------
+!
+!<
+    GTAP-AEZ supply of sluggish endowments
+    --------------------------------------
+>!
+
+Equation NAEZEND_SUPPLY
+# eq'n distributes the sluggish non-AEZ endowments across sectors (HT 51) #
+(all,i,SNAEZ_COMM)(all,j,PROD_COMM)(all,r,REG)
+ qoes(i,j,r) = qo(i,r) - endwslack(i,r) + ETRAE(i) * [pm(i,r) - pmes(i,j,r)];
+
+!<
+    Land supply is nested: first land cover, then harvested area (crops)
+>!
+
+!<
+    Land cover (forestry, grazing, crops)
+>!
+
+Coefficient (parameter)(all,i,AEZ_COMM) (all,r,REG)
+    ETRAEL1(i,r)
+    # elst. of transformation for land cover at bottom of supply tree #;
+Read
+    ETRAEL1 from file GTAPPARM header "ETL1";
+
+Coefficient
+    SIZE_LAND # size of LAND_COMM set #;
+Formula
+    SIZE_LAND = sum(i,LAND_COMM, 1);
+
+Variable (all,i,AEZ_COMM)(all,r,REG)
+    pmland(i,r) # market price of sluggish endowment in r #;
+Coefficient (all,i,AEZ_COMM)(all,j,LAND_COMM)(all,r,REG)
+    REVSHR1(i,j,r);
+Formula (all,i,AEZ_COMM)(all,j,LAND_COMM)(all,r,REG: VOM(i,r) = 0)
+    REVSHR1(i,j,r) = 1.0 / SIZE_LAND;
+Formula (all,i,AEZ_COMM)(all,j,LAND_COMM)(all,r,REG: VOM(i,r) > 0)
+    REVSHR1(i,j,r) = VFM(i,j,r) / sum(k,LAND_COMM, VFM(i,k,r));
+
+Equation LAND_PRICE
+# eq'n generates the composite price for sluggish endowments (HT 50) #
+(all,i,AEZ_COMM)(all,r,REG)
+    pmland(i,r) = sum(k,LAND_COMM, REVSHR1(i,k,r) * pmes(i,k,r));
+
+Coefficient (all,i,AEZ_COMM)(all,r,REG)
+    CROPRENTS(i,r);
+Formula (all,i,AEZ_COMM)(all,r,REG)
+    CROPRENTS(i,r) = sum(k,AGRLAND_COMM, VFM(i,k,r));
+
+Coefficient
+    SIZE_CROP # size of CROP_COMM set #;
+Formula
+    SIZE_CROP = sum(i,CROP_COMM, 1);
+
+Variable (all,i,AEZ_COMM)(all,r,REG)
+    qocropland(i,r) # supply of sluggish endowment in r #;
+Variable (all,i,AEZ_COMM)(all,r,REG)
+    pmcropland(i,r) # market price of sluggish endowment in r #;
+Coefficient (all,i,AEZ_COMM)(all,j,CROP_COMM)(all,r,REG)
+    REVSHR2(i,j,r);
+Formula (all,i,AEZ_COMM)(all,j,CROP_COMM)(all,r,REG: CROPRENTS(i,r) = 0)
+    REVSHR2(i,j,r) = 1.0 / SIZE_CROP;
+Formula (all,i,AEZ_COMM)(all,j,CROP_COMM)(all,r,REG: CROPRENTS(i,r) > 0)
+    REVSHR2(i,j,r) = VFM(i,j,r) / sum(k,CROP_COMM, VFM(i,k,r));
+
+Equation CROPLAND_PRICE
+# eq'n generates the composite price for sluggish endowments (HT 50) #
+(all,i,AEZ_COMM)(all,r,REG)
+    pmcropland(i,r) = sum(k,CROP_COMM, REVSHR2(i,k,r) * pmes(i,k,r));
+
+Equation AGRLAND_SUPPLY
+# eq'n distributes the sluggish endowments across sectors (HT 51) #
+(all,i,AEZ_COMM)(all,r,REG)
+ qocropland(i,r) = qo(i,r) - endwslack(i,r) 
+    + ETRAEL1(i,r) * [pmland(i,r) - pmcropland(i,r)];
+
+Equation OTHLAND_SUPPLY
+# eq'n distributes the sluggish endowments across forestry and grazing #
+(all,i,AEZ_COMM)(all,j,NCROP_COMM)(all,r,REG)
+ qoes(i,j,r) = qo(i,r) - endwslack(i,r) 
+    + ETRAEL1(i,r) * [pmland(i,r) - pmes(i,j,r)];
+
+!<
+    Crop land supply
+>!
+
+Coefficient (parameter)(all,i,AEZ_COMM)(all,r,REG)
+    ETRAEL2(i,r)
+    # elst. of transformation for crop land in supply tree #;
+Read
+    ETRAEL2 from file GTAPPARM header "ETL2";
+
+Equation INDCROPLAND_SUPPLY
+# eq'n distributes the sluggish endowments across sectors (HT 51) #
+(all,i,AEZ_COMM)(all,j,CROP_COMM)(all,r,REG)
+ qoes(i,j,r) = qocropland(i,r) - endwslack(i,r)
+    + ETRAEL2(i,r) * [pmcropland(i,r) - pmes(i,j,r)];
+
