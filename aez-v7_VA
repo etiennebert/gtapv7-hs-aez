@@ -8,7 +8,7 @@ Variable (all,i,ENDW_COMM)(all,j,PROD_COMM)(all,r,REG)
 
 Equation MPFACTPRICE
 # equation links domestic and firm demand prices (HT 16) #
-(all,i,ENDWM_COMM)(all,j,PROD_COMM)(all,r,REG)
+(all,i,ENDWM)(all,j,PROD_COMM)(all,r,REG)
     pfdi(i,j,r) = tf(i,j,r) + pmi(i,r);
 
 Equation SPFACTPRICE
